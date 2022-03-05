@@ -26,7 +26,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 		readAddr[0] = (writeAddr >> 8) & 0xFF;
 		readAddr[1] = (writeAddr) & 0xFF;
 		readEEPROMBlock(readAddr, writeBlockFirst.blockData);
-		
+		/*TODO:Dont send directly from txbuf, copy address + next data then send that instead*/
 		writeBlockFirst.nextAddr = (uint16_t)((writeBlockFirst.blockData[1] << 6) + (writeBlockFirst.blockData[2] >> 2));
 		writeBlockFirst.writeCount = ((uint32_t)((writeBlockFirst.blockData[2] & 1) << 16) + (writeBlockFirst.blockData[3] << 8) + writeBlockFirst.blockData[4]);
 		writeBlockFirst.blockUsed = ((writeBlockFirst.blockData[2] & 2) >> 1);
@@ -41,15 +41,15 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			if (ret != HAL_OK) { 
 				return EEPROM_ERROR;
 			}	
-			prevBlockTx[0] = ((prevAddr >> 8) & 0xFF);
-			prevBlockTx[1] = ((prevAddr) & 0xFF); 
+			prevBlockTx[0] = (prevAddr >> 8) & 0xFF;
+			prevBlockTx[1] = (prevAddr) & 0xFF; 
 			if (prevAddr != EEPROM_MAX_ADDR) {
 				ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
 			}
-			prevBlockTx[2] = ((writeAddr >> 6) & 0xFF);
+			prevBlockTx[2] = (writeAddr >> 6) & 0xFF;
 			prevBlockTx[3] = ((writeAddr << 2) & 0xFF) + 0x02 + (((writeBlockFirst.writeCount + 0x01) >> 16) & 0xFF); 
 			prevBlockTx[4] = (writeBlockFirst.writeCount >> 8) & 0xFF;
-			prevBlockTx[5] = (writeBlockFirst.writeCount & 0xFF);
+			prevBlockTx[5] = writeBlockFirst.writeCount & 0xFF;
 			
 			txBufSize--;
 			prevAddr = writeAddr + 1;
@@ -60,8 +60,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			} else {
 				writeAddr = 0;
 			}
-			txBuf[0] = (writeAddr >> 8) & 0xFF;//do we need this?
-			txBuf[1] = (writeAddr) & 0xFF;//do we need this?
+			
 			
 		} else {//This block is in use!
 			
@@ -71,27 +70,26 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 				writeAddr = 0;
 			}
 			
-			txBuf[0] = (writeAddr >> 8) & 0xFF;//do we need this?
-			txBuf[1] = (writeAddr) & 0xFF;//do we need this?
+			
 		}
 		
-		
-		
-		/*Do this one last time for the last block in the writing sequence*/
-		prevBlockTx[0] = ((prevAddr >> 8) & 0xFF);
-		prevBlockTx[1] = ((prevAddr) & 0xFF); 
-		if (prevAddr != EEPROM_MAX_ADDR) {
-			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
-		}
-		prevBlockTx[2] = ((writeAddr >> 6) & 0xFF);
-		writeBlockFirst.writeCount += 1;
-		prevBlockTx[3] = ((writeAddr << 2) & 0xFF) + 0x02 + ((writeBlockFirst.writeCount >> 16) & 0xFF); 
-		prevBlockTx[4] = ((writeBlockFirst.writeCount & 0xFF00) >> 8) & 0xFF;
-		prevBlockTx[5] = (writeBlockFirst.writeCount & 0xFF);
-		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
 		
 	}
 		
+	/*Do this one last time for the last block in the writing sequence*/
+	prevBlockTx[0] = ((prevAddr >> 8) & 0xFF);
+	prevBlockTx[1] = ((prevAddr) & 0xFF); 
+	if (prevAddr != EEPROM_MAX_ADDR) {
+		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
+	}
+	prevBlockTx[0] = (writeAddr >> 8) & 0xFF;
+	prevBlockTx[1] = (writeAddr) & 0xFF; 
+	prevBlockTx[2] = 0x40;
+	writeBlockFirst.writeCount += 1;
+	prevBlockTx[3] = 0x00 + 0x02 + ((writeBlockFirst.writeCount >> 16) & 0xFF); 
+	prevBlockTx[4] = ((writeBlockFirst.writeCount & 0xFF00) >> 8) & 0xFF;
+	prevBlockTx[5] = (writeBlockFirst.writeCount & 0xFF);
+	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
 	
 	return EEPROM_OK;
 }
