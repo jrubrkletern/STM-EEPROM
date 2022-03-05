@@ -5,7 +5,7 @@
 
 EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	uint8_t txbuf[3] = { 0x00, 0x0A, 0x48 };
-	uint16_t writeAddr = (*(txBuf) << 8) + *(txBuf + 1);
+	uint16_t writeAddr = (*(txBuf) << 8) + *(txBuf + 0x01);
 	if (writeAddr  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
@@ -14,83 +14,97 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	}
 	writeAddr *= 5; //from here we go from desired write block to desired write address
 	HAL_StatusTypeDef ret;
+	uint16_t startAddr = writeAddr;
 	
-	EEPROM_BLOCK writeBlockFirst;
+	EEPROM_BLOCK writeBlock, prevBlock;
 	uint16_t prevAddr = EEPROM_MAX_ADDR;
-	uint8_t prevBlockTx[6];
-	uint8_t readAddr[2] = { txBuf[0], txBuf[1]};
-	txBuf += 1;
+	txBuf += 2;
 	txBufSize -= 2; //we leave one of the txbuf additions for inside the while loop
+	uint16_t iterations = 0;
+	uint8_t currentTx[3] = {0};
 	while (txBufSize != 0) {
-		txBuf++;
-		readAddr[0] = (writeAddr >> 8) & 0xFF;
-		readAddr[1] = (writeAddr) & 0xFF;
-		readEEPROMBlock(readAddr, writeBlockFirst.blockData);
-		/*TODO:Dont send directly from txbuf, copy address + next data then send that instead*/
-		writeBlockFirst.nextAddr = (uint16_t)((writeBlockFirst.blockData[1] << 6) + (writeBlockFirst.blockData[2] >> 2));
-		writeBlockFirst.writeCount = ((uint32_t)((writeBlockFirst.blockData[2] & 1) << 16) + (writeBlockFirst.blockData[3] << 8) + writeBlockFirst.blockData[4]);
-		writeBlockFirst.blockUsed = ((writeBlockFirst.blockData[2] & 2) >> 1);
 		
-		if (!writeBlockFirst.blockUsed && (writeBlockFirst.writeCount < EEPROM_BLOCK_WRITE_LIMIT)) {
-			/*TODO FIND OUT HOW TO MAKE THIS WHOLE PART SEQUENTIAL*/
+		currentTx[0] = (writeAddr >> 8) & 0xFF;
+		currentTx[1] = (writeAddr) & 0xFF;
+		readEEPROMBlock(currentTx, writeBlock.blockData);
+		
+		writeBlock.nextAddr = (uint16_t)((writeBlock.blockData[1] << 6) + (writeBlock.blockData[2] >> 2));
+		writeBlock.writeCount = ((uint32_t)((writeBlock.blockData[2] & 1) << 16) + (writeBlock.blockData[3] << 8) + writeBlock.blockData[4]);
+		writeBlock.blockUsed = ((writeBlock.blockData[2] & 2) >> 1);
+		writeBlock.addr = writeAddr;
+		if (!writeBlock.blockUsed && (writeBlock.writeCount < EEPROM_BLOCK_WRITE_LIMIT)) {
 			
-			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, (txBuf), 3, 50);
-			/*TODO: Figure out logic for next addr and rebuilding write count and marking block as used*/
+			currentTx[2] = *(txBuf);
+			txBuf++;
+			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, currentTx, 3, 50);
+			iterations++;
+			txBufSize--;
 			
-			/*TODO FIND OUT HOW TO MAKE THIS WHOLE PART SEQUENTIAL*/
-			if (ret != HAL_OK) { 
+			if (ret != HAL_OK) {
+				txBuf -= (iterations + 2);
+				*txBuf = (startAddr >> 8) & 0xFF;
+				*(txBuf + 1) = startAddr & 0xFF;
 				return EEPROM_ERROR;
 			}	
-			prevBlockTx[0] = (prevAddr >> 8) & 0xFF;
-			prevBlockTx[1] = (prevAddr) & 0xFF; 
-			if (prevAddr != EEPROM_MAX_ADDR) {
-				ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
-			}
-			prevBlockTx[2] = (writeAddr >> 6) & 0xFF;
-			prevBlockTx[3] = ((writeAddr << 2) & 0xFF) + 0x02 + (((writeBlockFirst.writeCount + 0x01) >> 16) & 0xFF); 
-			prevBlockTx[4] = (writeBlockFirst.writeCount >> 8) & 0xFF;
-			prevBlockTx[5] = writeBlockFirst.writeCount & 0xFF;
 			
-			txBufSize--;
+			prevBlock.blockData[0] = (prevAddr >> 8) & 0xFF;
+			prevBlock.blockData[1] = (prevAddr) & 0xFF; 
+			if (iterations > 1) {//First block written to doesnt have a preceding one!
+				ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
+			}
+			prevBlock.blockData[2] = (writeBlock.addr >> 6) & 0xFF;
+			prevBlock.blockData[3] = ((writeBlock.addr << 2) & 0xFF) + 0x02 + (((writeBlock.writeCount + 0x01) >> 16) & 0xFF); 
+			prevBlock.blockData[4] = (writeBlock.writeCount >> 8) & 0xFF;
+			prevBlock.blockData[5] = writeBlock.writeCount & 0xFF;
+			
+			if(iterations == 1) { //placeholder to do the logic
+				startAddr = writeAddr; //our first place that we wrote to, we will note this in txBuf for the user to know where their data starts
+			}
 			prevAddr = writeAddr + 1;
-			if (writeBlockFirst.nextAddr != EEPROM_MAX_ADDR) {		
-				writeAddr = writeBlockFirst.nextAddr;
+			if (writeBlock.nextAddr != EEPROM_MAX_ADDR) {		//likely dont want it to follow the previous path explicitly, considering removing this
+				writeAddr = writeBlock.nextAddr;
 			} else if (writeAddr + 5 != EEPROM_MAX_ADDR) {
 				writeAddr += 5;	
 			} else {
 				writeAddr = 0;
-			}
-			
-			
-		} else {//This block is in use!
+			}	
+		} 
+		else {//This block is in use, increment to the next one
 			
 			if (writeAddr + 5 != EEPROM_MAX_ADDR) {
 				writeAddr += 0x05;
 			} else {
 				writeAddr = 0;
+			}	
+			if (writeAddr == startAddr) {
+				txBuf -= (iterations + 2);
+				*txBuf = (startAddr >> 8) & 0xFF;
+				*(txBuf + 1) = startAddr & 0xFF;
+				return EEPROM_SPACE_ERROR;
 			}
 			
-			
 		}
-		
 		
 	}
 		
 	/*Do this one last time for the last block in the writing sequence*/
-	prevBlockTx[0] = ((prevAddr >> 8) & 0xFF);
-	prevBlockTx[1] = ((prevAddr) & 0xFF); 
+	prevBlock.blockData[0] = ((prevAddr >> 8) & 0xFF);
+	prevBlock.blockData[1] = ((prevAddr) & 0xFF); 
 	if (prevAddr != EEPROM_MAX_ADDR) {
-		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
+		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	}
-	prevBlockTx[0] = (writeAddr >> 8) & 0xFF;
-	prevBlockTx[1] = (writeAddr) & 0xFF; 
-	prevBlockTx[2] = 0x40;
-	writeBlockFirst.writeCount += 1;
-	prevBlockTx[3] = 0x00 + 0x02 + ((writeBlockFirst.writeCount >> 16) & 0xFF); 
-	prevBlockTx[4] = ((writeBlockFirst.writeCount & 0xFF00) >> 8) & 0xFF;
-	prevBlockTx[5] = (writeBlockFirst.writeCount & 0xFF);
-	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlockTx, 6, 50);
+	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
+	prevBlock.blockData[1] = (writeBlock.addr) & 0xFF; 
+	prevBlock.blockData[2] = 0x40;
+	writeBlock.writeCount += 1;
+	prevBlock.blockData[3] = 0x00 + 0x02 + ((writeBlock.writeCount >> 16) & 0xFF); 
+	prevBlock.blockData[4] = ((writeBlock.writeCount & 0xFF00) >> 8) & 0xFF;
+	prevBlock.blockData[5] = (writeBlock.writeCount & 0xFF);
+	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	
+	txBuf -= (iterations + 2);
+	*txBuf = (startAddr >> 8) & 0xFF;
+	*(txBuf + 1) = startAddr & 0xFF;
 	return EEPROM_OK;
 }
 
