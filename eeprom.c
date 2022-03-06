@@ -20,12 +20,13 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	uint16_t prevAddr = EEPROM_MAX_ADDR;
 	txBuf += 2;
 	txBufSize -= 2; //we leave one of the txbuf additions for inside the while loop
-	uint16_t iterations = 0;
+	uint16_t bytesWritten = 0;
 	uint8_t currentTx[3] = {0};
 	while (txBufSize != 0) {
 		
 		currentTx[0] = (writeAddr >> 8) & 0xFF;
 		currentTx[1] = (writeAddr) & 0xFF;
+		
 		readEEPROMBlock(currentTx, writeBlock.blockData);
 		
 		writeBlock.nextAddr = (uint16_t)((writeBlock.blockData[1] << 6) + (writeBlock.blockData[2] >> 2));
@@ -37,11 +38,11 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			currentTx[2] = *(txBuf);
 			txBuf++;
 			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, currentTx, 3, 50);
-			iterations++;
+			bytesWritten++;
 			txBufSize--;
 			
 			if (ret != HAL_OK) {
-				txBuf -= (iterations + 2);
+				txBuf -= (bytesWritten + 2);
 				*txBuf = (startAddr >> 8) & 0xFF;
 				*(txBuf + 1) = startAddr & 0xFF;
 				return EEPROM_ERROR;
@@ -49,7 +50,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			
 			prevBlock.blockData[0] = (prevAddr >> 8) & 0xFF;
 			prevBlock.blockData[1] = (prevAddr) & 0xFF; 
-			if (iterations > 1) {//First block written to doesnt have a preceding one!
+			if (bytesWritten > 1) {//First block written to doesnt have a preceding one!
 				ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 			}
 			prevBlock.blockData[2] = (writeBlock.addr >> 6) & 0xFF;
@@ -57,32 +58,23 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			prevBlock.blockData[4] = (writeBlock.writeCount >> 8) & 0xFF;
 			prevBlock.blockData[5] = writeBlock.writeCount & 0xFF;
 			
-			if(iterations == 1) { //placeholder to do the logic
+			if (bytesWritten == 1) { //placeholder to do the logic
 				startAddr = writeAddr; //our first place that we wrote to, we will note this in txBuf for the user to know where their data starts
 			}
 			prevAddr = writeAddr + 1;
-			if (writeBlock.nextAddr != EEPROM_MAX_ADDR) {		//likely dont want it to follow the previous path explicitly, considering removing this
-				writeAddr = writeBlock.nextAddr;
-			} else if (writeAddr + 5 != EEPROM_MAX_ADDR) {
-				writeAddr += 5;	
-			} else {
-				writeAddr = 0;
-			}	
+		
 		} 
-		else {//This block is in use, increment to the next one
-			
-			if (writeAddr + 5 != EEPROM_MAX_ADDR) {
-				writeAddr += 0x05;
-			} else {
-				writeAddr = 0;
-			}	
-			if (writeAddr == startAddr) {
-				txBuf -= (iterations + 2);
-				*txBuf = (startAddr >> 8) & 0xFF;
-				*(txBuf + 1) = startAddr & 0xFF;
-				return EEPROM_SPACE_ERROR;
-			}
-			
+		
+		if (writeAddr + 0x05 != EEPROM_MAX_ADDR) {
+			writeAddr += 0x05;	
+		} else {
+			writeAddr = 0x00;
+		}
+		if (writeAddr == startAddr && txBufSize != 0) {
+			txBuf -= (bytesWritten + 0x02);
+			*txBuf = (startAddr >> 0x08) & 0xFF;
+			*(txBuf + 0x01) = startAddr & 0xFF;
+			return EEPROM_SPACE_ERROR;
 		}
 		
 	}
@@ -90,7 +82,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	/*Do this one last time for the last block in the writing sequence*/
 	prevBlock.blockData[0] = ((prevAddr >> 8) & 0xFF);
 	prevBlock.blockData[1] = ((prevAddr) & 0xFF); 
-	if (prevAddr != EEPROM_MAX_ADDR) {
+	if (bytesWritten > 1) {
 		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	}
 	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
@@ -102,7 +94,8 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	prevBlock.blockData[5] = (writeBlock.writeCount & 0xFF);
 	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	
-	txBuf -= (iterations + 2);
+	startAddr /= 5;
+	txBuf -= (bytesWritten + 2);
 	*txBuf = (startAddr >> 8) & 0xFF;
 	*(txBuf + 1) = startAddr & 0xFF;
 	return EEPROM_OK;
@@ -125,4 +118,19 @@ EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf) {
 	}
 	
 	return EEPROM_ERROR;
+}
+
+EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
+	
+	return EEPROM_OK;
+}
+
+EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf) {
+	
+	return EEPROM_OK;
+}
+
+EEPROM_Response_t wipeEEPROM(void) {
+	
+	return EEPROM_OK;
 }
