@@ -88,9 +88,9 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	}
 	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
 	prevBlock.blockData[1] = (writeBlock.addr) & 0xFF; 
-	prevBlock.blockData[2] = 0x40;
+	prevBlock.blockData[2] = 0xFF;
 	writeBlock.writeCount++;
-	prevBlock.blockData[3] = 0x00 + 0x02 + ((writeBlock.writeCount >> 16) & 0xFF); 
+	prevBlock.blockData[3] = 0xFC + 0x02 + ((writeBlock.writeCount >> 16) & 0xFF); 
 	prevBlock.blockData[4] = ((writeBlock.writeCount & 0xFF00) >> 8) & 0xFF;
 	prevBlock.blockData[5] = (writeBlock.writeCount & 0xFF);
 	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
@@ -143,9 +143,9 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 		if (eraseBlock.blockUsed && (eraseBlock.writeCount < EEPROM_BLOCK_WRITE_LIMIT)) {
 			eraseBlock.blockData[0] = currentTx[0];
 			eraseBlock.blockData[1] = currentTx[1];
-			eraseBlock.blockData[2] = 0x40;
+			eraseBlock.blockData[2] = 0xFF;
 			eraseBlock.writeCount++;
-			eraseBlock.blockData[3] = 0x00 + ((eraseBlock.writeCount >> 16) & 0xFF); 
+			eraseBlock.blockData[3] = 0xFC + ((eraseBlock.writeCount >> 16) & 0xFF); 
 			eraseBlock.blockData[4] = (eraseBlock.writeCount >> 8) & 0xFF;
 			eraseBlock.blockData[5] = (eraseBlock.writeCount & 0xFF);
 			//erase it
