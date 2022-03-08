@@ -9,7 +9,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	if (writeAddr  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
-	if(!(txBufSize < EEPROM_MAX_BLOCK && txBufSize > 0)) {
+	if (!(txBufSize < EEPROM_MAX_BLOCK && txBufSize > 0)) {
 		return EEPROM_DATA_SIZE_ERROR;
 	}
 	writeAddr *= 5; //from here we go from desired write block to desired write address
@@ -21,7 +21,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	txBuf += 2;
 	txBufSize -= 2; //we leave one of the txbuf additions for inside the while loop
 	uint16_t bytesWritten = 0;
-	uint8_t currentTx[3] = {0};
+	uint8_t currentTx[3] = { 0 };
 	while (txBufSize != 0) {
 		
 		currentTx[0] = (writeAddr >> 8) & 0xFF;
@@ -146,7 +146,7 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 			eraseBlock.blockData[5] = (eraseBlock.writeCount & 0xFF);
 			//erase it
 			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, eraseBlock.blockData, 6, 100);
-			if(ret != HAL_OK) {
+			if (ret != HAL_OK) {
 				return EEPROM_ERROR;
 			}
 		}
@@ -165,7 +165,7 @@ EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t rxBufSize)
 	if ((*(txBuf) << 8) + *(txBuf + 0x01)  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
-	if(rxBufSize == 0) {
+	if (rxBufSize == 0) {
 		return EEPROM_DATA_SIZE_ERROR;
 	}
 	HAL_StatusTypeDef ret;
