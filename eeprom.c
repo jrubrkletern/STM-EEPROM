@@ -122,14 +122,10 @@ EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf) {
 }
 
 EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
-	uint16_t writeAddr = (*(txBuf) << 8) + *(txBuf + 0x01);
-	if (writeAddr  >= EEPROM_MAX_BLOCK) {
+	if ((*(txBuf) << 8) + *(txBuf + 0x01)  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
-	
-	writeAddr *= 5; //from here we go from desired write block to desired write address
 	HAL_StatusTypeDef ret;
-	uint16_t startAddr = writeAddr;
 	
 	EEPROM_BLOCK eraseBlock;
 	uint8_t currentTx[2] = { *txBuf, *(txBuf + 1) };
@@ -165,7 +161,29 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 	return EEPROM_OK;
 }
 
-EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf) {
+EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t rxBufSize) {
+	if ((*(txBuf) << 8) + *(txBuf + 0x01)  >= EEPROM_MAX_BLOCK) {
+		return EEPROM_ADDR_ERROR;
+	}
+	if(rxBufSize == 0) {
+		return EEPROM_DATA_SIZE_ERROR;
+	}
+	HAL_StatusTypeDef ret;
+	
+	EEPROM_BLOCK readBlock;
+	uint8_t currentTx[2] = { *txBuf, *(txBuf + 1) };
+	
+	do {	
+		readEEPROMBlock(currentTx, readBlock.blockData);
+		readBlock.nextAddr = (uint16_t)((readBlock.blockData[1] << 6) + (readBlock.blockData[2] >> 2));
+		*rxBuf = readBlock.blockData[0];
+		rxBuf++;
+		rxBufSize--;
+		currentTx[0] = (readBlock.nextAddr >> 6) & 0xFF;
+		currentTx[1] = (readBlock.nextAddr << 2) & 0xFF; 
+	} while (readBlock.nextAddr != EEPROM_MAX_ADDR && (rxBufSize != 0));
+	
+	
 	
 	return EEPROM_OK;
 }

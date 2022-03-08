@@ -32,7 +32,7 @@ extern "C" {
 
 EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf);
 EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize);
-EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf);
+EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t);
 EEPROM_Response_t eraseEEPROM(uint8_t* txBuf);
 EEPROM_Response_t wipeEEPROM(void);
 #ifdef __cplusplus
