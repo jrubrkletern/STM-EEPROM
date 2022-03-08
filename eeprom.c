@@ -54,6 +54,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 				ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 			}
 			prevBlock.blockData[2] = (writeBlock.addr >> 6) & 0xFF;
+			writeBlock.writeCount++;
 			prevBlock.blockData[3] = ((writeBlock.addr << 2) & 0xFF) + 0x02 + (((writeBlock.writeCount + 0x01) >> 16) & 0xFF); 
 			prevBlock.blockData[4] = (writeBlock.writeCount >> 8) & 0xFF;
 			prevBlock.blockData[5] = writeBlock.writeCount & 0xFF;
@@ -88,7 +89,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
 	prevBlock.blockData[1] = (writeBlock.addr) & 0xFF; 
 	prevBlock.blockData[2] = 0x40;
-	writeBlock.writeCount += 1;
+	writeBlock.writeCount++;
 	prevBlock.blockData[3] = 0x00 + 0x02 + ((writeBlock.writeCount >> 16) & 0xFF); 
 	prevBlock.blockData[4] = ((writeBlock.writeCount & 0xFF00) >> 8) & 0xFF;
 	prevBlock.blockData[5] = (writeBlock.writeCount & 0xFF);
@@ -121,6 +122,45 @@ EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf) {
 }
 
 EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
+	uint16_t writeAddr = (*(txBuf) << 8) + *(txBuf + 0x01);
+	if (writeAddr  >= EEPROM_MAX_BLOCK) {
+		return EEPROM_ADDR_ERROR;
+	}
+	
+	writeAddr *= 5; //from here we go from desired write block to desired write address
+	HAL_StatusTypeDef ret;
+	uint16_t startAddr = writeAddr;
+	
+	EEPROM_BLOCK eraseBlock;
+	uint8_t currentTx[2] = { *txBuf, *(txBuf + 1) };
+	
+	do {	
+		readEEPROMBlock(currentTx, eraseBlock.blockData);
+		eraseBlock.nextAddr = (uint16_t)((eraseBlock.blockData[1] << 6) + (eraseBlock.blockData[2] >> 2));
+		eraseBlock.blockUsed = ((eraseBlock.blockData[2] & 2) >> 1);
+		eraseBlock.writeCount = ((uint32_t)((eraseBlock.blockData[2] & 1) << 16) + (eraseBlock.blockData[3] << 8) + eraseBlock.blockData[4]);
+		
+		if (eraseBlock.blockUsed && (eraseBlock.writeCount < EEPROM_BLOCK_WRITE_LIMIT)) {
+			eraseBlock.blockData[0] = currentTx[0];
+			eraseBlock.blockData[1] = currentTx[1];
+			eraseBlock.blockData[2] = 0x40;
+			eraseBlock.writeCount++;
+			eraseBlock.blockData[3] = 0x00 + ((eraseBlock.writeCount >> 16) & 0xFF); 
+			eraseBlock.blockData[4] = (eraseBlock.writeCount >> 8) & 0xFF;
+			eraseBlock.blockData[5] = (eraseBlock.writeCount & 0xFF);
+			//erase it
+			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, eraseBlock.blockData, 6, 100);
+			if(ret != HAL_OK) {
+				return EEPROM_ERROR;
+			}
+		}
+		
+			
+		currentTx[0] = (eraseBlock.nextAddr >> 6) & 0xFF;
+		currentTx[1] = (eraseBlock.nextAddr << 2) & 0xFF; 
+	} while (eraseBlock.nextAddr != EEPROM_MAX_ADDR);
+	
+	
 	
 	return EEPROM_OK;
 }
