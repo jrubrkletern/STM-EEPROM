@@ -37,7 +37,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 			
 			currentTx[2] = *(txBuf);
 			txBuf++;
-			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, currentTx, 3, 50);
+			ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, currentTx, 3, 250);
 			bytesWritten++;
 			txBufSize--;
 			
@@ -108,7 +108,6 @@ EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf) {
 	}
 	HAL_StatusTypeDef ret;
 	
-	
 	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_READ, txBuf, 2, 50);
 	if (ret != HAL_OK) {
 		return EEPROM_ERROR;
@@ -119,16 +118,20 @@ EEPROM_Response_t readEEPROMBlock(uint8_t* txBuf, uint8_t* rxBuf) {
 	}
 	
 	return EEPROM_ERROR;
+	
 }
 
 EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
-	if ((*(txBuf) << 8) + *(txBuf + 0x01)  >= EEPROM_MAX_BLOCK) {
+	uint16_t eraseAddr = (*(txBuf) << 8) + *(txBuf + 0x01);
+	
+	if (eraseAddr  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
+	eraseAddr *= 5;
 	HAL_StatusTypeDef ret;
 	
 	EEPROM_BLOCK eraseBlock;
-	uint8_t currentTx[2] = { *txBuf, *(txBuf + 1) };
+	uint8_t currentTx[2] = { (eraseAddr >> 8) & 0xFF, eraseAddr & 0xFF };
 	
 	do {	
 		readEEPROMBlock(currentTx, eraseBlock.blockData);
@@ -162,16 +165,18 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 }
 
 EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t rxBufSize) {
-	if ((*(txBuf) << 8) + *(txBuf + 0x01)  >= EEPROM_MAX_BLOCK) {
+	uint16_t readAddr = (*(txBuf) << 8) + *(txBuf + 0x01);
+	if (readAddr  >= EEPROM_MAX_BLOCK) {
 		return EEPROM_ADDR_ERROR;
 	}
 	if (rxBufSize == 0) {
 		return EEPROM_DATA_SIZE_ERROR;
 	}
+	readAddr *= 5;
 	HAL_StatusTypeDef ret;
 	
 	EEPROM_BLOCK readBlock;
-	uint8_t currentTx[2] = { *txBuf, *(txBuf + 1) };
+	uint8_t currentTx[2] = { (readAddr >> 8) & 0xFF, readAddr & 0xFF };
 	
 	do {	
 		readEEPROMBlock(currentTx, readBlock.blockData);
@@ -182,13 +187,28 @@ EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t rxBufSize)
 		currentTx[0] = (readBlock.nextAddr >> 6) & 0xFF;
 		currentTx[1] = (readBlock.nextAddr << 2) & 0xFF; 
 	} while (readBlock.nextAddr != EEPROM_MAX_ADDR && (rxBufSize != 0));
-	
+	//have some sort of safe cycle checking in case we get back to the beginning maybe? unless size argument saves it
 	
 	
 	return EEPROM_OK;
 }
 
 EEPROM_Response_t wipeEEPROM(void) {
+	
+	return EEPROM_OK;
+}
+EEPROM_Response_t formatEEPROM(void) {
+	uint8_t txBuf[64] = { 0 };
+	for(int i = 0; i < 64; i ++){
+		txBuf[i] = 0;
+	}
+	uint16_t writeAddr = 0;
+	for (int i = 0; i < 256; i++) {
+		HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, txBuf, 66, 1000);
+		writeAddr += 64;
+		txBuf[0] = (writeAddr >> 8) & 0xFF;
+		txBuf[1] = writeAddr & 0xFF;
+	}
 	
 	return EEPROM_OK;
 }
