@@ -19,7 +19,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	EEPROM_BLOCK writeBlock, prevBlock;
 	uint16_t prevAddr = EEPROM_MAX_ADDR;
 	txBuf += 2;
-	txBufSize -= 2; //we leave one of the txbuf additions for inside the while loop
+	
 	uint16_t bytesWritten = 0;
 	uint8_t currentTx[3] = { 0 };
 	while (txBufSize != 0) {
@@ -86,6 +86,7 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	if (bytesWritten > 1) {
 		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	}
+	writeBlock.addr++;
 	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
 	prevBlock.blockData[1] = (writeBlock.addr) & 0xFF; 
 	prevBlock.blockData[2] = 0xFF;
@@ -132,7 +133,7 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 	
 	EEPROM_BLOCK eraseBlock;
 	uint8_t currentTx[2] = { (eraseAddr >> 8) & 0xFF, eraseAddr & 0xFF };
-	
+	eraseAddr += 1;
 	do {	
 		readEEPROMBlock(currentTx, eraseBlock.blockData);
 		eraseBlock.nextAddr = (uint16_t)((eraseBlock.blockData[1] << 6) + (eraseBlock.blockData[2] >> 2));
@@ -140,8 +141,9 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 		eraseBlock.writeCount = ((uint32_t)((eraseBlock.blockData[2] & 1) << 16) + (eraseBlock.blockData[3] << 8) + eraseBlock.blockData[4]);
 		
 		if (eraseBlock.blockUsed && (eraseBlock.writeCount < EEPROM_BLOCK_WRITE_LIMIT)) {
-			eraseBlock.blockData[0] = currentTx[0];
-			eraseBlock.blockData[1] = currentTx[1];
+			eraseBlock.blockData[0] = (eraseAddr >> 8) & 0xFF;
+			eraseBlock.blockData[1] = eraseAddr & 0xFF;
+			
 			eraseBlock.blockData[2] = 0xFF;
 			eraseBlock.writeCount++;
 			eraseBlock.blockData[3] = 0xFC + ((eraseBlock.writeCount >> 16) & 0xFF); 
@@ -156,7 +158,8 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 		
 			
 		currentTx[0] = (eraseBlock.nextAddr >> 6) & 0xFF;
-		currentTx[1] = (eraseBlock.nextAddr << 2) & 0xFF; 
+		currentTx[1] = (eraseBlock.nextAddr << 2) & 0xFF;
+		eraseAddr = eraseBlock.nextAddr + 1;
 	} while (eraseBlock.nextAddr != EEPROM_MAX_ADDR);
 	
 	
