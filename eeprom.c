@@ -26,9 +26,14 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 		
 		currentTx[0] = (writeAddr >> 8) & 0xFF;
 		currentTx[1] = (writeAddr) & 0xFF;
-		
-		readEEPROMBlock(currentTx, writeBlock.blockData);
-		
+		EEPROM_Response_t eepromResponse;
+		eepromResponse = readEEPROMBlock(currentTx, writeBlock.blockData);
+		if(eepromResponse != EEPROM_OK) {
+				txBuf -= (bytesWritten + 2);
+				*txBuf = (startAddr >> 8) & 0xFF;
+				*(txBuf + 1) = startAddr & 0xFF;
+				return EEPROM_ERROR;
+		}
 		writeBlock.nextAddr = (uint16_t)((writeBlock.blockData[1] << 6) + (writeBlock.blockData[2] >> 2));
 		writeBlock.writeCount = ((uint32_t)((writeBlock.blockData[2] & 1) << 16) + (writeBlock.blockData[3] << 8) + writeBlock.blockData[4]);
 		writeBlock.blockUsed = ((writeBlock.blockData[2] & 2) >> 1);
@@ -135,7 +140,11 @@ EEPROM_Response_t eraseEEPROM(uint8_t* txBuf) {
 	uint8_t currentTx[2] = { (eraseAddr >> 8) & 0xFF, eraseAddr & 0xFF };
 	eraseAddr += 1;
 	do {	
-		readEEPROMBlock(currentTx, eraseBlock.blockData);
+		EEPROM_Response_t eepromResponse;
+		eepromResponse = readEEPROMBlock(currentTx, eraseBlock.blockData);
+		if (eepromResponse != EEPROM_OK) {
+			return EEPROM_ERROR;
+		}
 		eraseBlock.nextAddr = (uint16_t)((eraseBlock.blockData[1] << 6) + (eraseBlock.blockData[2] >> 2));
 		eraseBlock.blockUsed = ((eraseBlock.blockData[2] & 2) >> 1);
 		eraseBlock.writeCount = ((uint32_t)((eraseBlock.blockData[2] & 1) << 16) + (eraseBlock.blockData[3] << 8) + eraseBlock.blockData[4]);
@@ -182,7 +191,11 @@ EEPROM_Response_t readEEPROM(uint8_t* txBuf, uint8_t* rxBuf, uint16_t rxBufSize)
 	uint8_t currentTx[2] = { (readAddr >> 8) & 0xFF, readAddr & 0xFF };
 	
 	do {	
-		readEEPROMBlock(currentTx, readBlock.blockData);
+		EEPROM_Response_t eepromResponse;
+		eepromResponse = readEEPROMBlock(currentTx, readBlock.blockData);
+		if (eepromResponse != EEPROM_OK) {
+			return EEPROM_ERROR;
+		}
 		readBlock.nextAddr = (uint16_t)((readBlock.blockData[1] << 6) + (readBlock.blockData[2] >> 2));
 		*rxBuf = readBlock.blockData[0];
 		rxBuf++;
