@@ -88,10 +88,6 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	}
 		
 	/*Do this one last time for the last block in the writing sequence*/
-	prevBlock.blockData[0] = ((prevAddr >> 8) & 0xFF);
-	prevBlock.blockData[1] = ((prevAddr) & 0xFF); 
-	
-	//maybe some of this is excessive 
 	writeBlock.addr++;
 	prevBlock.blockData[0] = (writeBlock.addr >> 8) & 0xFF;
 	prevBlock.blockData[1] = (writeBlock.addr) & 0xFF; 
@@ -100,9 +96,6 @@ EEPROM_Response_t writeEEPROM(uint8_t* txBuf, uint16_t txBufSize) {
 	prevBlock.blockData[3] = 0xFC + 0x02 + ((writeBlock.writeCount >> 16) & 0xFF); 
 	prevBlock.blockData[4] = ((writeBlock.writeCount & 0xFF00) >> 8) & 0xFF;
 	prevBlock.blockData[5] = (writeBlock.writeCount & 0xFF);
-	if (bytesWritten > 1) {
-		ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
-	}
 	ret = HAL_I2C_Master_Transmit(&hi2c1, EEPROM_ADDR_WRITE, prevBlock.blockData, 6, 50);
 	
 	
